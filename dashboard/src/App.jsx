@@ -6,6 +6,7 @@ import FootfallTimeline from './components/FootfallTimeline';
 import HeatmapView from './components/HeatmapView';
 import AnomalyFeed from './components/AnomalyFeed';
 import EventLog from './components/EventLog';
+import ErrorBoundary from './components/ErrorBoundary';
 import './index.css';
 
 function App() {
@@ -55,38 +56,50 @@ function App() {
       
       <main className="dashboard-grid">
         <div className="metrics-panel">
-          <MetricsPanel data={metrics} />
+          <ErrorBoundary>
+            <MetricsPanel data={metrics} />
+          </ErrorBoundary>
         </div>
 
         <div className="panel funnel-panel">
           <h2>Conversion Funnel</h2>
           <div className="chart-container">
-            <FunnelChart data={funnel?.funnel_stages || []} />
+            <ErrorBoundary>
+              <FunnelChart data={funnel?.stages || []} />
+            </ErrorBoundary>
           </div>
         </div>
 
         <div className="panel timeline-panel">
           <h2>Footfall Timeline</h2>
           <div className="chart-container">
-            <FootfallTimeline data={metrics?.hourly_breakdown || []} />
+            <ErrorBoundary>
+              <FootfallTimeline data={metrics?.hourly_breakdown || []} />
+            </ErrorBoundary>
           </div>
         </div>
 
         <div className="panel heatmap-panel">
           <h2>Zone Heatmap</h2>
           <div className="chart-container">
-            <HeatmapView data={heatmap?.zones || []} />
+            <ErrorBoundary>
+              <HeatmapView data={heatmap?.zones || []} />
+            </ErrorBoundary>
           </div>
         </div>
 
         <div className="panel anomalies-panel">
           <h2>Anomalies</h2>
-          <AnomalyFeed data={anomalies?.anomalies || []} />
+          <ErrorBoundary>
+            <AnomalyFeed data={anomalies?.anomalies || []} />
+          </ErrorBoundary>
         </div>
 
         <div className="panel events-panel">
           <h2>Real-time Events</h2>
-          <EventLog data={events?.events || []} />
+          <ErrorBoundary>
+            <EventLog data={events?.events || []} />
+          </ErrorBoundary>
         </div>
       </main>
     </div>
