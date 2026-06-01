@@ -63,7 +63,7 @@ async def get_conversion_funnel(
             s.dwell_seconds,
             s.zones_visited,
             s.purchased,
-            s.customer_number
+            s.order_id
         FROM sessions s
         LEFT JOIN (
             SELECT DISTINCT customer_number, order_id

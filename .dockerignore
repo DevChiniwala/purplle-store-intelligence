@@ -1,0 +1,4 @@
+data/videos/
+dashboard/node_modules/
+.git/
+__pycache__/
