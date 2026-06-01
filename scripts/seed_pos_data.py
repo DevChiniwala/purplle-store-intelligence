@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 async def seed_pos_data():
-    csv_path = Path("data/pos/Brigade_Bangalore_10_April_26 (1)bc6219c.csv")
+    csv_path = Path("data/pos/pos_sales.csv")
     if not csv_path.exists():
         logger.error(f"POS data file not found at {csv_path}")
         return
@@ -18,29 +18,30 @@ async def seed_pos_data():
     df = pd.read_csv(csv_path)
 
     # Rename columns to match schema
+    # Rename columns to match schema
     df = df.rename(columns={
-        "Order ID": "order_id",
-        "Invoice Number": "invoice_number",
-        "Order Date": "order_date",
-        "Order Time": "order_time",
-        "Store ID": "store_id",
-        "Store Name": "store_name",
-        "Customer Name": "customer_name",
-        "Customer Number": "customer_number",
-        "Product Name": "product_name",
-        "Brand Name": "brand_name",
-        "Category": "category",
-        "Sub Category": "sub_category",
-        "Salesperson Name": "salesperson_name",
-        "Qty": "qty",
+        "dep_name": "category",
         "GMV": "gmv",
-        "NMV": "nmv",
-        "Total Amount": "total_amount"
+        "NMV": "nmv"
+    })
+    
+    # Fill any NaNs
+    df = df.fillna({
+        "customer_name": "Guest",
+        "customer_number": "",
+        "brand_name": "",
+        "category": "",
+        "sub_category": "",
+        "salesperson_name": ""
     })
 
     # Clean date/time
     df['order_date'] = pd.to_datetime(df['order_date'], format='%d-%m-%Y').dt.date
-    df['order_time'] = pd.to_datetime(df['order_time'], format='%I:%M %p').dt.time
+    # Some times are 16:55:36 (%H:%M:%S), some might be AM/PM. Let's just use mixed or %H:%M:%S.
+    try:
+        df['order_time'] = pd.to_datetime(df['order_time'], format='%H:%M:%S').dt.time
+    except ValueError:
+        df['order_time'] = pd.to_datetime(df['order_time'], format='mixed').dt.time
 
     db_url = os.getenv("DATABASE_URL", "postgresql://admin:admin@postgres:5432/store_intelligence")
     # For local execution outside docker:
@@ -71,7 +72,7 @@ async def seed_pos_data():
         for record in records:
             await conn.execute(
                 query,
-                record['order_id'], record['invoice_number'], record['order_date'], record['order_time'],
+                str(record['order_id']), str(record['invoice_number']), record['order_date'], record['order_time'],
                 record['store_id'], record['store_name'], record['customer_name'], str(record['customer_number']),
                 record['product_name'], record['brand_name'], record['category'], record['sub_category'],
                 record['salesperson_name'], int(record['qty']), float(record['gmv']), float(record['nmv']), float(record['total_amount'])
