@@ -1,29 +1,22 @@
-# Engineering Trade-offs & Choices
+# Engineering Trade-offs & Decision Making
 
-## 1. Machine Learning Models
-**Choice: YOLOv8n + ByteTrack**
-*Trade-off*: We chose YOLOv8-nano over larger models (like YOLOv8-large or RT-DETR) to ensure the pipeline can process 5 concurrent 1080p camera streams on edge hardware in real-time. ByteTrack was chosen over DeepSORT because it relies purely on spatial IoU and detection confidence rather than heavy Re-ID feature extractors, saving significant compute while maintaining robust temporal tracking.
+This document outlines the core architectural and implementation decisions made to satisfy the Purplle Tech Challenge 2026 Round 2 requirements, focusing on production-readiness, edge cases, and real-time computation.
 
-## 2. Event Streaming
-**Choice: Redis Streams**
-*Trade-off*: We chose Redis Streams over Apache Kafka or RabbitMQ. While Kafka provides better long-term durability, Redis is vastly simpler to deploy in a local/edge Docker environment, uses a fraction of the RAM, and provides exactly the pub/sub + consumer group semantics we need for pushing events from the Python pipeline to PostgreSQL.
+## 1. Decoupling Detection from Analytics (Redis Streams)
+**The Problem:** Running a heavy object detection and tracking pipeline (YOLOv8 + DeepSORT) in the same process as the Analytics API would lead to severe latency, blocked event loops, and dropped API requests.
+**The Choice:** We decoupled the two systems using Redis Streams. The CV pipeline acts solely as an event emitter (`events.publisher`), pushing raw semantic events (`ZONE_ENTERED`). A separate asynchronous Python worker (`events.consumer`) reads these streams and builds persistent sessions.
+**Trade-off:** Adds an infrastructure dependency (Redis), but guarantees high availability and enables the system to horizontally scale (multiple cameras streaming to one Redis cluster).
 
-## 3. Database
-**Choice: PostgreSQL (Relational) vs Time-Series DBs**
-*Trade-off*: We chose standard PostgreSQL over specialized time-series databases like TimescaleDB or InfluxDB. The retail analytics domain requires heavy relational joins (Events -> Sessions -> POS Transactions). PostgreSQL handles JSONB for arbitrary bounding box metadata, standard relational joins for POS correlation, and is performant enough for our event volume when properly indexed.
+## 2. Real-Time Session Aggregation vs Batch Processing
+**The Problem:** The `/funnel` and `/metrics` APIs need to calculate metrics based on distinct visitor journeys, but the CV pipeline only emits point-in-time zone events.
+**The Choice:** Instead of forcing the API to compute sessions on-the-fly from thousands of raw events (which scales poorly), the `consumer` aggregates events into a `sessions` table in real-time. We use PostgreSQL `JSONB` to store `zones_visited`. 
+**Trade-off:** Write-heavy on the database during stream ingestion, but guarantees O(1) or lightning-fast read queries for the dashboard.
 
-## 4. API Framework
-**Choice: FastAPI**
-*Trade-off*: We chose FastAPI over Flask or Django. The async native architecture of FastAPI is perfect for the massive concurrent I/O we do (database pooling with `asyncpg` and WebSocket streaming). 
+## 3. Probabilistic POS Matching
+**The Problem:** The Computer Vision pipeline has no concept of a "receipt" or "order_id" to compute absolute Store Conversion Rate.
+**The Choice:** We implemented a probabilistic matching algorithm in the Consumer. If a tracked session's `zones_visited` includes the "Billing" area, the system queries the `pos_transactions` table for unassigned orders that occurred within +/- 15 minutes of the visitor's exit time.
+**Trade-off:** Not 100% accurate (multiple people might check out simultaneously), but represents a realistic engineering compromise without employing highly invasive facial recognition to cross-reference loyalty accounts.
 
-## 5. Frontend Stack
-**Choice: React + Vite**
-*Trade-off*: We chose React with Vite over Next.js. Since the dashboard is a client-side heavy application streaming real-time WebSockets with complex data visualizations (Recharts), server-side rendering (SSR) via Next.js adds unnecessary complexity. Vite provides instant HMR and a blazing fast build process for the hackathon.
-
-## 6. Spatial Mapping
-**Choice: Polygon Zones vs Grid Heatmaps**
-*Trade-off*: We mapped the store using strict vector polygons rather than a grid. A grid doesn't respect physical boundaries (shelves, counters). Polygons allow us to perfectly align detection zones with the actual store layout seen in the camera frames, enabling highly accurate "engaged with Skincare" metrics.
-
-## 7. Development Choices
-**Choice: Frame Skipping**
-*Trade-off*: We only run inference on every 15th frame (~2 FPS). Retail environments have slow-moving targets. Running at 30 FPS wastes 90% of GPU resources on redundant data. 2 FPS is plenty for accurate dwell time and zone transitions.
+## 4. Elimination of Mock Data
+**The Problem:** Relying on mock scripts caps evaluation scores and hides pipeline integration bugs.
+**The Choice:** The entire system—including Heatmaps, Anomalies, Funnels, and Metrics—is powered entirely by live data populated organically by the `pipeline` and `consumer` containers upon running `docker-compose up`. All API endpoints query the PostgreSQL database directly.

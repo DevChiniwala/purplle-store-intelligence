@@ -47,6 +47,20 @@ services:
     depends_on:
       - api
 
+  consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile.pipeline
+    command: ["python", "-m", "events.consumer"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://admin:admin@postgres:5432/store_intelligence
+      - REDIS_URL=redis://redis:6379
+
   pipeline:
     build:
       context: .
@@ -60,6 +74,8 @@ services:
       redis:
         condition: service_healthy
       api:
+        condition: service_started
+      consumer:
         condition: service_started
     environment:
       - DATABASE_URL=postgresql://admin:admin@postgres:5432/store_intelligence
