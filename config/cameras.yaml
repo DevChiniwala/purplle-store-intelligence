@@ -1,0 +1,109 @@
+# Camera Zone Configuration for Brigade Road Purplle Store
+# Zones defined as normalized polygon coordinates [0.0-1.0] relative to frame dimensions (1920x1080)
+# Format: list of [x, y] vertices forming a polygon
+
+cameras:
+  CAM_1:
+    name: "Skincare & Clean Beauty Section"
+    fps: 30
+    process_fps: 2  # Extract at 2 FPS for processing
+    role: "browse"   # Interior browsing area
+    zones:
+      skincare_wall:
+        polygon: [[0.0, 0.0], [0.6, 0.0], [0.6, 0.85], [0.0, 0.85]]
+        type: "browse"
+        label: "Skincare Wall Display"
+      center_display:
+        polygon: [[0.3, 0.55], [0.7, 0.55], [0.7, 1.0], [0.3, 1.0]]
+        type: "browse"
+        label: "Center Product Display"
+      purplle_counter:
+        polygon: [[0.7, 0.3], [1.0, 0.3], [1.0, 0.85], [0.7, 0.85]]
+        type: "browse"
+        label: "Purplle Branded Counter"
+
+  CAM_2:
+    name: "Makeup Section"
+    fps: 30
+    process_fps: 2
+    role: "browse_entry"  # Can see both browsing and partial entrance
+    zones:
+      entrance_area:
+        polygon: [[0.0, 0.1], [0.15, 0.1], [0.15, 0.75], [0.0, 0.75]]
+        type: "entry"
+        label: "Store Entrance (partial view)"
+      makeup_wall:
+        polygon: [[0.3, 0.0], [1.0, 0.0], [1.0, 0.85], [0.3, 0.85]]
+        type: "browse"
+        label: "Makeup Wall (Lakme, Faces Canada, Maybelline)"
+      center_aisle:
+        polygon: [[0.15, 0.3], [0.5, 0.3], [0.5, 0.9], [0.15, 0.9]]
+        type: "browse"
+        label: "Center Aisle"
+
+  CAM_3:
+    name: "Store Entrance"
+    fps: 30
+    process_fps: 3  # Higher FPS for entrance - critical for entry/exit counting
+    role: "entrance"  # PRIMARY entry/exit camera
+    zones:
+      outside:
+        polygon: [[0.55, 0.0], [1.0, 0.0], [1.0, 1.0], [0.55, 1.0]]
+        type: "outside"
+        label: "Outside Store (through glass)"
+      entry_line:
+        # The glass door threshold - crossing this line = entry/exit
+        polygon: [[0.35, 0.0], [0.55, 0.0], [0.55, 1.0], [0.35, 1.0]]
+        type: "entry_exit"
+        label: "Door Threshold"
+      inside_entrance:
+        polygon: [[0.0, 0.0], [0.35, 0.0], [0.35, 1.0], [0.0, 1.0]]
+        type: "entry"
+        label: "Inside Entrance Foyer"
+
+  CAM_4:
+    name: "Backroom / Storage"
+    fps: 25
+    process_fps: 1  # Low FPS - mainly for staff detection
+    role: "backroom"
+    zones:
+      storage_area:
+        polygon: [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]
+        type: "staff_only"
+        label: "Storage Room"
+
+  CAM_5:
+    name: "Billing Counter"
+    fps: 25
+    process_fps: 2
+    role: "billing"  # Critical for purchase correlation
+    zones:
+      billing_counter:
+        polygon: [[0.0, 0.15], [0.5, 0.15], [0.5, 0.85], [0.0, 0.85]]
+        type: "billing"
+        label: "POS / Billing Counter"
+      browse_nearby:
+        polygon: [[0.0, 0.0], [0.15, 0.0], [0.15, 0.6], [0.0, 0.6]]
+        type: "browse"
+        label: "Skincare Shelf Near Counter"
+      backroom_path:
+        polygon: [[0.5, 0.0], [0.8, 0.0], [0.8, 1.0], [0.5, 1.0]]
+        type: "staff_only"
+        label: "Path to Backroom"
+
+# Global settings
+entry_exit_camera: "CAM_3"  # Primary camera for footfall counting
+billing_camera: "CAM_5"      # Primary camera for purchase correlation
+staff_only_cameras: ["CAM_4"]  # Cameras that only see staff areas
+
+# Entry/Exit line definition for CAM_3
+# A virtual line drawn across the door threshold
+# Persons crossing from right-to-left = ENTRY
+# Persons crossing from left-to-right = EXIT
+entry_exit_line:
+  camera: "CAM_3"
+  # Line coordinates (normalized): from top to bottom of door
+  point1: [0.45, 0.15]
+  point2: [0.45, 0.95]
+  # Direction: positive cross product = entry, negative = exit
+  entry_direction: "right_to_left"
