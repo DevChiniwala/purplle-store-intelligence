@@ -3,6 +3,8 @@ from pydantic import BaseModel
 from typing import Dict, Any
 from api.database import get_db_connection
 import asyncpg
+import redis.asyncio as aioredis
+import os
 
 router = APIRouter()
 
@@ -25,7 +27,15 @@ async def get_health(conn: asyncpg.Connection = Depends(get_db_connection)):
     except Exception as e:
         services["database"] = f"error: {str(e)}"
         
-    # In a real app we'd check redis here too
+    # Check Redis
+    redis_url = os.getenv("REDIS_URL", "redis://redis:6379")
+    try:
+        r = aioredis.from_url(redis_url)
+        await r.ping()
+        services["redis"] = "connected"
+        await r.aclose()
+    except Exception as e:
+        services["redis"] = f"error: {str(e)}"
     
     status = "healthy" if all(v == "connected" or v == "running" for v in services.values()) else "degraded"
     
