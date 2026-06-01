@@ -18,8 +18,8 @@ const FootfallTimeline = ({ data }) => {
           itemStyle={{ color: '#F3F4F6' }}
         />
         <Legend />
-        <Line type="monotone" dataKey="entries" stroke="#A855F7" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} name="Entries" />
-        <Line type="monotone" dataKey="exits" stroke="#0D9488" strokeWidth={3} dot={{ r: 4 }} name="Exits" />
+        <Line type="monotone" dataKey="footfall" stroke="#A855F7" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} name="Footfall" />
+        <Line type="monotone" dataKey="revenue" stroke="#0D9488" strokeWidth={3} dot={{ r: 4 }} name="Revenue" />
       </LineChart>
     </ResponsiveContainer>
   );
