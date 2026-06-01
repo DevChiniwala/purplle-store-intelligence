@@ -18,20 +18,19 @@ class FunnelResponse(BaseModel):
     funnel_stages: List[FunnelStage]
     drop_off_analysis: List[DropOff]
 
-@router.get("/", response_model=FunnelResponse)
-async def get_funnel(store_id: str):
-    return FunnelResponse(
-        funnel_stages=[
-            FunnelStage(stage="Entered Store", count=72, percentage=100.0),
-            FunnelStage(stage="Browsed Products", count=58, percentage=80.6),
-            FunnelStage(stage="Engaged with Staff", count=31, percentage=43.1),
-            FunnelStage(stage="Reached Billing", count=24, percentage=33.3),
-            FunnelStage(stage="Completed Purchase", count=19, percentage=26.4)
-        ],
-        drop_off_analysis=[
-            DropOff(from_stage="Entered Store", to_stage="Browsed Products", drop_off_pct=19.4),
-            DropOff(from_stage="Browsed Products", to_stage="Engaged with Staff", drop_off_pct=46.6),
-            DropOff(from_stage="Engaged with Staff", to_stage="Reached Billing", drop_off_pct=22.6),
-            DropOff(from_stage="Reached Billing", to_stage="Completed Purchase", drop_off_pct=20.8)
-        ]
+from datetime import datetime, timezone
+from api.services.funnel_service import get_conversion_funnel, ConversionFunnel
+
+@router.get("/", response_model=ConversionFunnel)
+async def get_funnel(
+    store_id: str,
+    target_date: str = "2026-04-10"
+):
+    start_time = datetime.fromisoformat(f"{target_date}T00:00:00").replace(tzinfo=timezone.utc)
+    end_time = datetime.fromisoformat(f"{target_date}T23:59:59").replace(tzinfo=timezone.utc)
+    
+    return await get_conversion_funnel(
+        store_id=store_id,
+        start_time=start_time,
+        end_time=end_time
     )

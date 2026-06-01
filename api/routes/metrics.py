@@ -29,31 +29,20 @@ class MetricsResponse(BaseModel):
     staff_count: int
     hourly_breakdown: List[HourlyMetrics]
 
-@router.get("/", response_model=MetricsResponse)
+from datetime import datetime, timezone
+
+from api.services.metrics_service import get_store_metrics, StoreMetrics
+
+@router.get("/", response_model=StoreMetrics)
 async def get_metrics(
     store_id: str,
-    target_date: str = "2026-04-10",
-    conn: asyncpg.Connection = Depends(get_db_connection)
+    target_date: str = "2026-04-10"
 ):
-    # This is a mocked logic for now, representing what the analytics engine would compute
-    # Normally this would be a complex query joining `events`, `sessions`, and `pos_transactions`
+    start_time = datetime.fromisoformat(f"{target_date}T00:00:00").replace(tzinfo=timezone.utc)
+    end_time = datetime.fromisoformat(f"{target_date}T23:59:59").replace(tzinfo=timezone.utc)
     
-    return MetricsResponse(
+    return await get_store_metrics(
         store_id=store_id,
-        store_name="Brigade_Bangalore",
-        date=target_date,
-        total_footfall=87,
-        unique_visitors=72,
-        customers_purchased=19,
-        store_conversion_rate=26.39,
-        average_dwell_time_minutes=12.4,
-        peak_hour="18:00-19:00",
-        total_revenue=28547.00,
-        average_basket_size=4.21,
-        average_order_value=1502.47,
-        staff_count=5,
-        hourly_breakdown=[
-            HourlyMetrics(hour="12:00", entries=8, exits=5, purchases=3),
-            HourlyMetrics(hour="13:00", entries=6, exits=7, purchases=2)
-        ]
+        start_time=start_time,
+        end_time=end_time
     )
