@@ -1,9 +1,5 @@
 <div align="center">
 
-<img src="dashboard/public/hero.png" alt="Purplle Store Intelligence Dashboard" width="100%" style="border-radius:12px"/>
-
-<br/><br/>
-
 ![Challenge](https://img.shields.io/badge/Purplle-Tech%20Challenge%202026-FF4785?style=for-the-badge&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688?style=for-the-badge&logo=fastapi&logoColor=white)
