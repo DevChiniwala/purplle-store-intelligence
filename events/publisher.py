@@ -13,8 +13,15 @@ class EventPublisher:
     def publish(self, event: EventSchema):
         try:
             event_dict = event.model_dump()
-            # Convert dicts and lists to strings for redis hash
-            event_data = {k: str(v) if not isinstance(v, str) else v for k, v in event_dict.items() if v is not None}
+            event_data = {}
+            for k, v in event_dict.items():
+                if v is not None:
+                    if isinstance(v, (dict, list)):
+                        event_data[k] = json.dumps(v)
+                    elif not isinstance(v, str):
+                        event_data[k] = str(v)
+                    else:
+                        event_data[k] = v
             self.redis.xadd(self.stream_name, event_data)
         except Exception as e:
             logger.error(f"Failed to publish event: {e}")

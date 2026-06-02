@@ -65,6 +65,15 @@ class EventConsumer:
             zone_id = event_data.get('zone_id')
             store_id = event_data.get('store_id')
             
+            metadata_str = event_data.get('metadata', '{}')
+            # Fallback for old single-quoted dict strings from python str()
+            if metadata_str.startswith("{") and "'" in metadata_str and '"' not in metadata_str:
+                try:
+                    import ast
+                    metadata_str = json.dumps(ast.literal_eval(metadata_str))
+                except:
+                    pass
+
             await conn.execute("""
                 INSERT INTO events (
                     event_id, store_id, camera_id, visitor_id, event_type, 
@@ -79,7 +88,7 @@ class EventConsumer:
                 event_type, timestamp_obj, zone_id,
                 int(event_data.get('dwell_ms') or 0),
                 is_staff, float(event_data.get('confidence', 0.0)),
-                event_data.get('metadata', '{}')
+                metadata_str
             )
             
             if not visitor_id:
