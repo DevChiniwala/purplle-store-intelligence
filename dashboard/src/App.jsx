@@ -17,16 +17,17 @@ function App() {
   const [events, setEvents] = useState(null);
   const [loading, setLoading] = useState(true);
   const storeId = "ST1008";
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         const [metricsRes, funnelRes, anomaliesRes, heatmapRes, eventsRes] = await Promise.all([
-          fetch(`http://localhost:8000/api/v1/stores/${storeId}/metrics`),
-          fetch(`http://localhost:8000/api/v1/stores/${storeId}/funnel`),
-          fetch(`http://localhost:8000/api/v1/stores/${storeId}/anomalies`),
-          fetch(`http://localhost:8000/api/v1/stores/${storeId}/heatmap`),
-          fetch(`http://localhost:8000/api/v1/events?page=1&page_size=20`)
+          fetch(`${API_URL}/api/v1/stores/${storeId}/metrics`),
+          fetch(`${API_URL}/api/v1/stores/${storeId}/funnel`),
+          fetch(`${API_URL}/api/v1/stores/${storeId}/anomalies`),
+          fetch(`${API_URL}/api/v1/stores/${storeId}/heatmap`),
+          fetch(`${API_URL}/api/v1/events?page=1&page_size=20`)
         ]);
 
         if (metricsRes.ok) setMetrics(await metricsRes.json());
