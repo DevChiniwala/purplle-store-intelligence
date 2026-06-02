@@ -23,6 +23,8 @@ class VideoProcessor:
         redis_url = "redis://redis:6379"  # in a real app, read from config
         self.event_generator = EventGenerator(EventPublisher(redis_url=redis_url))
         
+        self.active_tracks = {}
+        
     def process(self):
         logger.info(f"Starting processing for {self.camera_id}: {self.video_path}")
         cap = cv2.VideoCapture(self.video_path)
@@ -49,6 +51,8 @@ class VideoProcessor:
                 detections = self.detector.detect(frame)
                 tracked_detections = self.tracker.update(detections)
                 
+                seen_this_frame = set()
+                
                 for i in range(len(tracked_detections)):
                     bbox = tracked_detections.xyxy[i]
                     track_id = tracked_detections.tracker_id[i]
@@ -59,8 +63,14 @@ class VideoProcessor:
                     zone = self.zone_classifier.get_zone_for_point(x_center, y_bottom)
                     
                     if zone:
+                        seen_this_frame.add(int(track_id))
+                        self.active_tracks[int(track_id)] = {
+                            "time": current_time,
+                            "is_staff": self.edge_case_manager.identify_staff(int(track_id), zone)
+                        }
+                        
                         # Process Edge Cases
-                        is_staff = self.edge_case_manager.identify_staff(int(track_id), zone)
+                        is_staff = self.active_tracks[int(track_id)]["is_staff"]
                         group_id = self.edge_case_manager.update_positions_and_groups(int(track_id), x_center, y_bottom)
                         is_child = self.edge_case_manager.check_child(bbox)
                         
@@ -80,8 +90,35 @@ class VideoProcessor:
                             is_staff=is_staff,
                             metadata=metadata
                         )
+                
+                # Check for stale tracks (not seen for > 15 seconds real-time equivalent or just 15 loops)
+                # Since we simulate current_time = datetime.now(), real-time seconds apply
+                stale_tracks = []
+                for tid, data in self.active_tracks.items():
+                    if (current_time - data["time"]).total_seconds() > 10.0:
+                        stale_tracks.append(tid)
+                        
+                for tid in stale_tracks:
+                    self.event_generator.generate_exit_event(
+                        camera_id=self.camera_id,
+                        track_id=tid,
+                        timestamp=current_time,
+                        is_staff=self.active_tracks[tid]["is_staff"]
+                    )
+                    del self.active_tracks[tid]
                         
             frame_idx += 1
+            
+        # Flush remaining tracks as EXITS
+        final_time = datetime.now(timezone.utc)
+        for tid, data in self.active_tracks.items():
+            self.event_generator.generate_exit_event(
+                camera_id=self.camera_id,
+                track_id=tid,
+                timestamp=final_time,
+                is_staff=data["is_staff"]
+            )
+        self.active_tracks.clear()
             
         cap.release()
         logger.info(f"Finished processing {self.camera_id}")

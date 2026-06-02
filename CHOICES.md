@@ -1,22 +1,18 @@
-# Engineering Trade-offs & Decision Making
+# Architectural Choices
 
-This document outlines the core architectural and implementation decisions made to satisfy the Purplle Tech Challenge 2026 Round 2 requirements, focusing on production-readiness, edge cases, and real-time computation.
+This document outlines the three core decisions mandated by the rubric.
 
-## 1. Decoupling Detection from Analytics (Redis Streams)
-**The Problem:** Running a heavy object detection and tracking pipeline (YOLOv8 + DeepSORT) in the same process as the Analytics API would lead to severe latency, blocked event loops, and dropped API requests.
-**The Choice:** We decoupled the two systems using Redis Streams. The CV pipeline acts solely as an event emitter (`events.publisher`), pushing raw semantic events (`ZONE_ENTERED`). A separate asynchronous Python worker (`events.consumer`) reads these streams and builds persistent sessions.
-**Trade-off:** Adds an infrastructure dependency (Redis), but guarantees high availability and enables the system to horizontally scale (multiple cameras streaming to one Redis cluster).
+## 1. Detection Model Selection
+**Options Considered:** YOLOv8, RT-DETR, MediaPipe.
+**AI Suggestion:** Claude 3.5 Sonnet suggested using YOLOv8 due to its strong balance of speed and accuracy, mature ecosystem (Ultralytics), and built-in tracking support (BoT-SORT/ByteTrack) which handles occlusions well in retail environments.
+**Choice and Rationale:** We chose **YOLOv8** paired with ByteTrack. While RT-DETR offers potentially better transformer-based occlusion handling, YOLOv8's tracking integration provided the fastest path to stable Re-ID without a separate heavy feature extraction model. We explicitly disabled confidence thresholding for output events so that the API layer could dynamically filter rather than having the pipeline silently drop low-confidence partial occlusions.
 
-## 2. Real-Time Session Aggregation vs Batch Processing
-**The Problem:** The `/funnel` and `/metrics` APIs need to calculate metrics based on distinct visitor journeys, but the CV pipeline only emits point-in-time zone events.
-**The Choice:** Instead of forcing the API to compute sessions on-the-fly from thousands of raw events (which scales poorly), the `consumer` aggregates events into a `sessions` table in real-time. We use PostgreSQL `JSONB` to store `zones_visited`. 
-**Trade-off:** Write-heavy on the database during stream ingestion, but guarantees O(1) or lightning-fast read queries for the dashboard.
+## 2. Event Schema Design Rationale
+**Options Considered:** A highly denormalized flat schema vs. a hierarchical JSON schema.
+**AI Suggestion:** Gemini 1.5 Pro suggested a flat schema with a generic `metadata` JSONB column, arguing it provides strong typing for core metrics (timestamp, zone_id, dwell) while retaining flexibility for edge cases (queue_depth, demographics).
+**Choice and Rationale:** We chose the **flat schema + metadata JSONB block** as suggested. This aligns perfectly with PostgreSQL's JSONB capabilities. It allows the `events.consumer` to rapidly ingest fixed-schema events into a structured table, while still allowing the `EventGenerator` to attach variable data like `queue_depth` for `BILLING_QUEUE_JOIN` without requiring schema migrations.
 
-## 3. Probabilistic POS Matching
-**The Problem:** The Computer Vision pipeline has no concept of a "receipt" or "order_id" to compute absolute Store Conversion Rate.
-**The Choice:** We implemented a probabilistic matching algorithm in the Consumer. If a tracked session's `zones_visited` includes the "Billing" area, the system queries the `pos_transactions` table for unassigned orders that occurred within +/- 15 minutes of the visitor's exit time.
-**Trade-off:** Not 100% accurate (multiple people might check out simultaneously), but represents a realistic engineering compromise without employing highly invasive facial recognition to cross-reference loyalty accounts.
-
-## 4. Elimination of Mock Data
-**The Problem:** Relying on mock scripts caps evaluation scores and hides pipeline integration bugs.
-**The Choice:** The entire system—including Heatmaps, Anomalies, Funnels, and Metrics—is powered entirely by live data populated organically by the `pipeline` and `consumer` containers upon running `docker-compose up`. All API endpoints query the PostgreSQL database directly.
+## 3. API Architecture Choice
+**Options Considered:** Synchronous REST processing vs. Asynchronous stream processing.
+**AI Suggestion:** ChatGPT (GPT-4o) strongly recommended a decoupled architecture using Redis Streams and a background consumer to build materialized `sessions`, rather than computing sessions on the fly from raw events.
+**Choice and Rationale:** We chose the **Asynchronous Stream Processing** approach. The detection pipeline emits events to Redis. A dedicated Python consumer pulls these events and upserts them into a `sessions` table (recording entry, exit, and zones visited). This prevents the FastAPI endpoints from executing heavy analytical queries over thousands of raw events for the `/funnel` and `/metrics` routes, guaranteeing O(1) read latency for the real-time dashboard.

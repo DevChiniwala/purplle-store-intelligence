@@ -1,3 +1,6 @@
+# PROMPT: Write comprehensive tests for the Store Intelligence API covering ingest idempotency, metric validation, funnel edge cases, and empty store handling.
+# CHANGES MADE: Added explicit database mocking and adjusted assertions for timezone-aware datetimes.
+
 import pytest
 import datetime as dt
 from unittest.mock import patch, MagicMock
