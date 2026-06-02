@@ -37,6 +37,10 @@ async def seed_pos_data():
 
     # Clean date/time
     df['order_date'] = pd.to_datetime(df['order_date'], format='%d-%m-%Y').dt.date
+    # Override order_date to today so that it matches our pipeline events generated today
+    from datetime import datetime
+    df['order_date'] = datetime.now().date()
+    
     # Some times are 16:55:36 (%H:%M:%S), some might be AM/PM. Let's just use mixed or %H:%M:%S.
     try:
         df['order_time'] = pd.to_datetime(df['order_time'], format='%H:%M:%S').dt.time
@@ -60,22 +64,22 @@ async def seed_pos_data():
         
         query = """
         INSERT INTO pos_transactions (
-            order_id, invoice_number, order_date, order_time, store_id, 
-            store_name, customer_name, customer_number, product_name, 
-            brand_name, category, sub_category, salesperson_name, 
-            qty, gmv, nmv, total_amount
+            transaction_id, store_id, timestamp, basket_value_inr
         ) VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+            $1, $2, $3, $4
         )
+        ON CONFLICT (transaction_id) DO NOTHING
         """
         
         for record in records:
+            from datetime import datetime
+            # Combine date and time
+            dt_str = f"{record['order_date']} {record['order_time']}"
+            ts = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+            
             await conn.execute(
                 query,
-                str(record['order_id']), str(record['invoice_number']), record['order_date'], record['order_time'],
-                record['store_id'], record['store_name'], record['customer_name'], str(record['customer_number']),
-                record['product_name'], record['brand_name'], record['category'], record['sub_category'],
-                record['salesperson_name'], int(record['qty']), float(record['gmv']), float(record['nmv']), float(record['total_amount'])
+                str(record['order_id']), record['store_id'], ts, float(record['total_amount'])
             )
             
         logger.info(f"Successfully seeded {len(records)} POS transaction rows.")
