@@ -41,6 +41,9 @@ async def seed_pos_data():
     from datetime import datetime
     df['order_date'] = datetime.now().date()
     
+    # Override store_id to ST-5001 to match pipeline events
+    df['store_id'] = 'ST-5001'
+    
     # Some times are 16:55:36 (%H:%M:%S), some might be AM/PM. Let's just use mixed or %H:%M:%S.
     try:
         df['order_time'] = pd.to_datetime(df['order_time'], format='%H:%M:%S').dt.time

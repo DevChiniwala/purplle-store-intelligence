@@ -21,7 +21,7 @@ from api.database import get_pool
 
 logger = structlog.get_logger(__name__)
 
-PRODUCT_ZONES = {"shelf", "display", "trial", "product", "gondola", "endcap"}
+PRODUCT_ZONES = {"skincare_wall", "center_display", "purplle_counter", "makeup_wall", "center_aisle", "browse_nearby"}
 
 
 class FunnelStage(BaseModel):
