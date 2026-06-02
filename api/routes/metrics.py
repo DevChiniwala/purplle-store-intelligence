@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 from datetime import date
 from api.database import get_db_connection
 import asyncpg
