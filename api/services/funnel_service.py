@@ -90,7 +90,7 @@ async def get_conversion_funnel(
 
         # Stage 2 – Engaged (≥2 zones or dwell > 60s)
         if len(zones) >= 2 or dwell > 60:
-            engaged.add(sid)
+            engaged.add(vid)
 
         # Stage 3 – Interested (visited a product zone)
         zone_set = {z.lower() for z in zones}
