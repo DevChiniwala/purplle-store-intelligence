@@ -24,8 +24,11 @@ from api.services.funnel_service import get_conversion_funnel, ConversionFunnel
 @router.get("/", response_model=ConversionFunnel)
 async def get_funnel(
     store_id: str,
-    target_date: str = "2026-04-10"
+    target_date: Optional[str] = Query(None, description="Date in YYYY-MM-DD format. Defaults to today.")
 ):
+    if not target_date:
+        target_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        
     start_time = datetime.fromisoformat(f"{target_date}T00:00:00").replace(tzinfo=timezone.utc)
     end_time = datetime.fromisoformat(f"{target_date}T23:59:59").replace(tzinfo=timezone.utc)
     

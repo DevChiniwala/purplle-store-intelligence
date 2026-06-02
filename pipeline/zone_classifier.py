@@ -22,7 +22,7 @@ class ZoneClassifier:
             pts = np.array(zone_data["polygon"])
             pts[:, 0] *= W
             pts[:, 1] *= H
-            self.polygons[zone_id] = sv.PolygonZone(polygon=pts.astype(int), frame_resolution_wh=(W, H))
+            self.polygons[zone_id] = sv.PolygonZone(polygon=pts.astype(int))
 
     def get_zone_for_point(self, x: int, y: int) -> str | None:
         """Returns the first zone containing the point."""

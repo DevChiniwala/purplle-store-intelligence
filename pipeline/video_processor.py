@@ -75,11 +75,9 @@ class VideoProcessor:
                             camera_id=self.camera_id,
                             track_id=int(track_id),
                             zone=zone,
-                            bbox_arr=bbox,
                             confidence=float(confidence),
                             timestamp=current_time,
                             is_staff=is_staff,
-                            group_id=group_id,
                             metadata=metadata
                         )
                         

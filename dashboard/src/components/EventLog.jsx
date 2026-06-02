@@ -4,9 +4,9 @@ const EventLog = ({ data }) => {
   if (!data || data.length === 0) return <div>No events available.</div>;
 
   const getEventColor = (type) => {
-    if (type.includes('ENTERED')) return '#10B981';
-    if (type.includes('EXITED')) return '#EF4444';
-    if (type.includes('PURCHASE')) return '#F59E0B';
+    if (type.includes('ENTRY') || type.includes('ENTER')) return '#10B981';
+    if (type.includes('EXIT')) return '#EF4444';
+    if (type.includes('BILLING')) return '#F59E0B';
     return '#3B82F6';
   };
 
@@ -21,7 +21,7 @@ const EventLog = ({ data }) => {
             {event.event_type}
           </div>
           <div className="event-details">
-            Track ID: {event.track_id} | Zone: {event.zone} | Cam: {event.camera_id}
+            Visitor: {event.visitor_id || 'Unknown'} | Zone: {event.zone_id || 'N/A'} | Cam: {event.camera_id}
           </div>
         </div>
       ))}

@@ -9,16 +9,13 @@ class BoundingBox(BaseModel):
 
 class EventSchema(BaseModel):
     event_id: str
-    event_type: str  # e.g., "PERSON_ENTERED", "ZONE_TRANSITION", "PERSON_EXITED"
-    timestamp: str
+    store_id: str
     camera_id: str
-    track_id: int
-    session_id: Optional[str] = None
-    zone: str
-    previous_zone: Optional[str] = None
-    confidence: float
-    bbox: BoundingBox
+    visitor_id: str
+    event_type: str
+    timestamp: str
+    zone_id: Optional[str] = None
+    dwell_ms: Optional[int] = None
     is_staff: bool = False
-    group_id: Optional[str] = None
-    dwell_seconds: Optional[float] = None
+    confidence: float
     metadata: Dict[str, Any] = {}

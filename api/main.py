@@ -29,6 +29,10 @@ async def lifespan(app: FastAPI):
     await close_db_pool()
 
 
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+import asyncpg
+
 app = FastAPI(
     title="Store Intelligence API",
     description="AI-powered retail analytics — Purplle Tech Challenge 2026",
@@ -37,6 +41,22 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+@app.exception_handler(asyncpg.exceptions.PostgresError)
+async def db_exception_handler(request: Request, exc: asyncpg.exceptions.PostgresError):
+    logger.error("database_error", error=str(exc), path=request.url.path)
+    return JSONResponse(
+        status_code=503,
+        content={"error": "Database unavailable", "detail": "The service is currently experiencing degraded performance. Please try again later."}
+    )
+
+@app.exception_handler(ConnectionError)
+async def connection_exception_handler(request: Request, exc: ConnectionError):
+    logger.error("connection_error", error=str(exc), path=request.url.path)
+    return JSONResponse(
+        status_code=503,
+        content={"error": "Service unavailable", "detail": "Unable to connect to downstream services."}
+    )
 
 # ── Middleware (order matters: outermost first) ──────────────────────────────
 origins = os.getenv(

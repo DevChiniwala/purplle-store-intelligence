@@ -60,12 +60,12 @@ async def get_store_metrics(
     session_query = f"""
         SELECT
             COUNT(*)                                             AS total_sessions,
-            COUNT(DISTINCT s.track_id)                           AS unique_visitors,
-            COALESCE(AVG(s.dwell_seconds), 0)                    AS avg_dwell,
-            COUNT(*) FILTER (WHERE s.dwell_seconds < 30)         AS bounce_count,
+            COUNT(DISTINCT s.visitor_id)                         AS unique_visitors,
+            COALESCE(AVG(s.dwell_ms), 0)                         AS avg_dwell_ms,
+            COUNT(*) FILTER (WHERE s.dwell_ms < 30000)           AS bounce_count,
             COUNT(*) FILTER (WHERE s.purchased = TRUE)           AS purchased_count
         FROM sessions s
-        WHERE s.camera_id LIKE $1 || '%%'
+        WHERE s.store_id = $1
           AND s.entry_time >= $2
           AND s.entry_time <  $3
           AND s.is_staff = FALSE
@@ -79,7 +79,8 @@ async def get_store_metrics(
 
     total_sessions: int = row["total_sessions"] if row else 0
     unique_visitors: int = row["unique_visitors"] if row else 0
-    avg_dwell: float = float(row["avg_dwell"]) if row else 0.0
+    avg_dwell_ms: float = float(row["avg_dwell_ms"]) if row else 0.0
+    avg_dwell = avg_dwell_ms / 1000.0
     bounce_count: int = row["bounce_count"] if row else 0
     purchased_count: int = row["purchased_count"] if row else 0
 
@@ -89,17 +90,16 @@ async def get_store_metrics(
     # ── POS revenue ──────────────────────────────────────────────────────
     pos_query = """
         SELECT
-            COALESCE(SUM(nmv), 0)   AS total_nmv,
-            COALESCE(SUM(gmv), 0)   AS total_gmv,
-            COUNT(DISTINCT order_id) AS txn_count
+            COALESCE(SUM(basket_value_inr), 0) AS total_revenue,
+            COUNT(DISTINCT transaction_id)     AS txn_count
         FROM pos_transactions
         WHERE store_id = $1
-          AND order_date >= $2::date
-          AND order_date <= $3::date
+          AND timestamp >= $2
+          AND timestamp < $3
     """
-    pos_row = await pool.fetchrow(pos_query, store_id, start_time.date(), end_time.date())
-    revenue = Decimal(str(pos_row["total_nmv"])) if pos_row else Decimal("0")
-    gmv = Decimal(str(pos_row["total_gmv"])) if pos_row else Decimal("0")
+    pos_row = await pool.fetchrow(pos_query, store_id, start_time, end_time)
+    revenue = Decimal(str(pos_row["total_revenue"])) if pos_row else Decimal("0")
+    gmv = revenue  # simplified for new schema
     txn_count: int = pos_row["txn_count"] if pos_row else 0
     atv = round(revenue / txn_count, 2) if txn_count else Decimal("0")
 
@@ -107,9 +107,9 @@ async def get_store_metrics(
     hourly_footfall_query = f"""
         SELECT
             EXTRACT(HOUR FROM s.entry_time)::int AS hour,
-            COUNT(DISTINCT s.track_id)            AS footfall
+            COUNT(DISTINCT s.visitor_id)         AS footfall
         FROM sessions s
-        WHERE s.camera_id LIKE $1 || '%%'
+        WHERE s.store_id = $1
           AND s.entry_time >= $2
           AND s.entry_time <  $3
           AND s.is_staff = FALSE
@@ -119,19 +119,19 @@ async def get_store_metrics(
     """
     hourly_revenue_query = """
         SELECT
-            EXTRACT(HOUR FROM order_time)::int AS hour,
-            COALESCE(SUM(nmv), 0)               AS revenue,
-            COUNT(DISTINCT order_id)             AS transactions
+            EXTRACT(HOUR FROM timestamp)::int   AS hour,
+            COALESCE(SUM(basket_value_inr), 0)  AS revenue,
+            COUNT(DISTINCT transaction_id)      AS transactions
         FROM pos_transactions
         WHERE store_id = $1
-          AND order_date >= $2::date
-          AND order_date <= $3::date
+          AND timestamp >= $2
+          AND timestamp < $3
         GROUP BY 1
         ORDER BY 1
     """
 
     footfall_rows = await pool.fetch(hourly_footfall_query, *params)
-    revenue_rows = await pool.fetch(hourly_revenue_query, store_id, start_time.date(), end_time.date())
+    revenue_rows = await pool.fetch(hourly_revenue_query, store_id, start_time, end_time)
 
     footfall_map: dict[int, int] = {r["hour"]: r["footfall"] for r in footfall_rows}
     revenue_map: dict[int, dict[str, Any]] = {
@@ -173,8 +173,4 @@ async def get_store_metrics(
 
 async def _resolve_store_name(pool: asyncpg.Pool, store_id: str) -> str:
     """Look up the store name from POS data, fall back to store_id."""
-    row = await pool.fetchrow(
-        "SELECT store_name FROM pos_transactions WHERE store_id = $1 LIMIT 1",
-        store_id,
-    )
-    return row["store_name"] if row else store_id
+    return store_id  # Store name is no longer in pos_transactions

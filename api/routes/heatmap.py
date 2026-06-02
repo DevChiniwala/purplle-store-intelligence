@@ -25,9 +25,9 @@ class HeatmapResponse(BaseModel):
 async def get_heatmap(store_id: str, db = Depends(get_db_connection)):
     # Calculate zone visits dynamically from sessions
     rows = await db.fetch("""
-        SELECT zones_visited, dwell_seconds, entry_time 
+        SELECT zones_visited, dwell_ms, entry_time 
         FROM sessions 
-        WHERE camera_id LIKE $1 || '%'
+        WHERE store_id = $1
     """, store_id)
     
     zone_counts = {}
@@ -51,8 +51,8 @@ async def get_heatmap(store_id: str, db = Depends(get_db_connection)):
                         zone_counts[z] = 0
                         zone_dwells[z] = []
                     zone_counts[z] += 1
-                    if row['dwell_seconds']:
-                        zone_dwells[z].append(row['dwell_seconds'])
+                    if row['dwell_ms']:
+                        zone_dwells[z].append(row['dwell_ms'] / 1000.0)
             except:
                 pass
                 

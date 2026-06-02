@@ -22,46 +22,46 @@ class AnomaliesResponse(BaseModel):
 async def get_anomalies(store_id: str, db = Depends(get_db_connection)):
     anomalies_list = []
     
-    # 1. Unusual Dwell Time (> 10 mins = 600 seconds)
+    # 1. Unusual Dwell Time (> 10 mins = 600,000 ms)
     dwell_rows = await db.fetch("""
-        SELECT session_id, track_id, dwell_seconds, entry_time, zones_visited
+        SELECT visitor_id, dwell_ms, entry_time, zones_visited
         FROM sessions
-        WHERE camera_id LIKE $1 || '%' AND dwell_seconds > 600
-        ORDER BY dwell_seconds DESC
+        WHERE store_id = $1 AND dwell_ms > 600000
+        ORDER BY dwell_ms DESC
         LIMIT 5
     """, store_id)
     
     for row in dwell_rows:
         anomalies_list.append(Anomaly(
-            anomaly_id=f"ANO-DWELL-{row['session_id'][:8]}",
+            anomaly_id=f"ANO-DWELL-{row['visitor_id'][:8]}",
             type="UNUSUAL_DWELL",
-            severity="high" if row['dwell_seconds'] > 1200 else "medium",
+            severity="high" if row['dwell_ms'] > 1200000 else "medium",
             timestamp=row['entry_time'].isoformat() if row['entry_time'] else datetime.utcnow().isoformat(),
-            description=f"Person track_{row['track_id']} dwelled for {int(row['dwell_seconds']/60)} minutes.",
+            description=f"Person {row['visitor_id']} dwelled for {int(row['dwell_ms']/60000)} minutes.",
             zone="Store-wide",
-            track_id=row['track_id']
+            track_id=None
         ))
         
     # 2. Frequent Visitors (Re-entry) 
-    # Let's see if any track_id appears multiple times (if tracking maintains ID across sessions)
+    # Group by visitor_id
     reentry_rows = await db.fetch("""
-        SELECT track_id, COUNT(*) as visit_count, MAX(entry_time) as last_visit
+        SELECT visitor_id, COUNT(*) as visit_count, MAX(entry_time) as last_visit
         FROM sessions
-        WHERE camera_id LIKE $1 || '%'
-        GROUP BY track_id
+        WHERE store_id = $1
+        GROUP BY visitor_id
         HAVING COUNT(*) > 2
         LIMIT 5
     """, store_id)
     
     for row in reentry_rows:
         anomalies_list.append(Anomaly(
-            anomaly_id=f"ANO-REENTRY-{row['track_id']}",
+            anomaly_id=f"ANO-REENTRY-{row['visitor_id'][:8]}",
             type="FREQUENT_REENTRY",
             severity="low",
             timestamp=row['last_visit'].isoformat() if row['last_visit'] else datetime.utcnow().isoformat(),
-            description=f"Person track_{row['track_id']} detected {row['visit_count']} times today.",
+            description=f"Person {row['visitor_id']} detected {row['visit_count']} times.",
             zone="Entry",
-            track_id=row['track_id']
+            track_id=None
         ))
         
     # Provide fallback if no dynamic anomalies exist yet

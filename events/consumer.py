@@ -57,90 +57,90 @@ class EventConsumer:
     async def _process_event(self, event_data: dict):
         async with self.pool.acquire() as conn:
             # 1. Insert Raw Event
-            bbox_str = event_data.get('bbox', '{}').replace("'", '"') 
             event_type = event_data.get('event_type')
-            session_id = event_data.get('session_id')
+            visitor_id = event_data.get('visitor_id')
             timestamp_str = event_data.get('timestamp')
             is_staff = event_data.get('is_staff', 'False') == 'True'
-            zone = event_data.get('zone')
+            zone_id = event_data.get('zone_id')
+            store_id = event_data.get('store_id')
             
             await conn.execute("""
                 INSERT INTO events (
-                    event_id, event_type, timestamp, camera_id, track_id, 
-                    session_id, zone, previous_zone, confidence, bbox, 
-                    is_staff, group_id, metadata
+                    event_id, store_id, camera_id, visitor_id, event_type, 
+                    timestamp, zone_id, dwell_ms, is_staff, confidence, metadata
                 ) VALUES (
-                    $1, $2, $3::timestamptz, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13::jsonb
+                    $1, $2, $3, $4, $5, $6::timestamptz, $7, $8, $9, $10, $11::jsonb
                 )
                 ON CONFLICT (event_id) DO NOTHING
             """,
-                event_data.get('event_id'), event_type, timestamp_str,
-                event_data.get('camera_id'), int(event_data.get('track_id', 0)),
-                session_id, zone, event_data.get('previous_zone'),
-                float(event_data.get('confidence', 0.0)), bbox_str,
-                is_staff, event_data.get('group_id'), '{}'
+                event_data.get('event_id'), store_id,
+                event_data.get('camera_id'), visitor_id,
+                event_type, timestamp_str, zone_id,
+                int(event_data.get('dwell_ms') or 0),
+                is_staff, float(event_data.get('confidence', 0.0)),
+                event_data.get('metadata', '{}')
             )
             
-            if not session_id:
+            if not visitor_id:
                 return
 
             # 2. Build/Update Session
-            if event_type == 'PERSON_ENTERED':
+            if event_type == 'ENTRY':
                 await conn.execute("""
                     INSERT INTO sessions (
-                        session_id, track_id, camera_id, entry_time, is_staff, group_id, zones_visited
-                    ) VALUES ($1, $2, $3, $4::timestamptz, $5, $6, '[]'::jsonb)
-                    ON CONFLICT (session_id) DO NOTHING
+                        visitor_id, store_id, camera_id, entry_time, is_staff, zones_visited
+                    ) VALUES ($1, $2, $3, $4::timestamptz, $5, '[]'::jsonb)
+                    ON CONFLICT (visitor_id) DO NOTHING
                 """,
-                    session_id, int(event_data.get('track_id', 0)), event_data.get('camera_id'),
-                    timestamp_str, is_staff, event_data.get('group_id')
+                    visitor_id, store_id, event_data.get('camera_id'),
+                    timestamp_str, is_staff
                 )
                 
-            elif event_type == 'ZONE_ENTERED':
-                if zone:
-                    # Upsert session if it doesn't exist just in case we missed PERSON_ENTERED
+            elif event_type == 'ZONE_ENTER':
+                if zone_id:
+                    # Upsert session if it doesn't exist just in case we missed ENTRY
                     await conn.execute("""
-                        INSERT INTO sessions (session_id, track_id, camera_id, entry_time, zones_visited)
+                        INSERT INTO sessions (visitor_id, store_id, camera_id, entry_time, zones_visited)
                         VALUES ($1, $2, $3, $4::timestamptz, '[]'::jsonb)
-                        ON CONFLICT (session_id) DO NOTHING
-                    """, session_id, int(event_data.get('track_id', 0)), event_data.get('camera_id'), timestamp_str)
+                        ON CONFLICT (visitor_id) DO NOTHING
+                    """, visitor_id, store_id, event_data.get('camera_id'), timestamp_str)
                     
                     await conn.execute("""
                         UPDATE sessions 
                         SET zones_visited = zones_visited || $1::jsonb
-                        WHERE session_id = $2
-                    """, json.dumps([zone]), session_id)
+                        WHERE visitor_id = $2
+                    """, json.dumps([zone_id]), visitor_id)
                     
-            elif event_type == 'PERSON_EXITED':
-                # Set exit time and calculate dwell
+            elif event_type == 'EXIT':
+                # Set exit time and calculate dwell_ms
                 await conn.execute("""
                     UPDATE sessions 
                     SET exit_time = $1::timestamptz, 
-                        dwell_seconds = EXTRACT(EPOCH FROM ($1::timestamptz - entry_time))
-                    WHERE session_id = $2
-                """, timestamp_str, session_id)
+                        dwell_ms = (EXTRACT(EPOCH FROM ($1::timestamptz - entry_time)) * 1000)::int
+                    WHERE visitor_id = $2
+                """, timestamp_str, visitor_id)
                 
                 # POS Matching logic
                 # If they visited Billing, try to match a POS transaction near their exit time
-                row = await conn.fetchrow("SELECT zones_visited, entry_time FROM sessions WHERE session_id = $1", session_id)
+                row = await conn.fetchrow("SELECT zones_visited, entry_time FROM sessions WHERE visitor_id = $1", visitor_id)
                 if row and row['zones_visited']:
                     zones_visited = json.loads(row['zones_visited'])
                     if any('billing' in z.lower() or 'checkout' in z.lower() for z in zones_visited):
                         # Find an unassigned POS transaction within +/- 15 minutes of exit time
                         pos_match = await conn.fetchrow("""
-                            SELECT order_id FROM pos_transactions 
-                            WHERE order_date = ($1::timestamptz AT TIME ZONE 'UTC')::date
-                            AND order_time >= ($1::timestamptz - INTERVAL '15 minutes')::time
-                            AND order_time <= ($1::timestamptz + INTERVAL '15 minutes')::time
-                            AND order_id NOT IN (SELECT order_id FROM sessions WHERE order_id IS NOT NULL)
+                            SELECT transaction_id FROM pos_transactions 
+                            WHERE store_id = $1
+                            AND timestamp >= ($2::timestamptz - INTERVAL '15 minutes')
+                            AND timestamp <= ($2::timestamptz + INTERVAL '15 minutes')
+                            AND transaction_id NOT IN (SELECT transaction_id FROM sessions WHERE transaction_id IS NOT NULL)
                             LIMIT 1
-                        """, timestamp_str)
+                        """, store_id, timestamp_str)
                         
                         if pos_match:
                             await conn.execute("""
-                                UPDATE sessions SET purchased = TRUE, order_id = $1 WHERE session_id = $2
-                            """, pos_match['order_id'], session_id)
-                            logger.info(f"Matched session {session_id} to order {pos_match['order_id']}")
+                                UPDATE sessions SET purchased = TRUE, transaction_id = $1 WHERE visitor_id = $2
+                            """, pos_match['transaction_id'], visitor_id)
+                            logger.info(f"Matched session {visitor_id} to order {pos_match['transaction_id']}")
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

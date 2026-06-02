@@ -16,7 +16,7 @@ function App() {
   const [heatmap, setHeatmap] = useState(null);
   const [events, setEvents] = useState(null);
   const [loading, setLoading] = useState(true);
-  const storeId = "ST1008";
+  const storeId = "ST-5001";
   const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
   useEffect(() => {
