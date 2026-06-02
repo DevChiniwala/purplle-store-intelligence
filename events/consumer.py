@@ -4,7 +4,7 @@ import asyncio
 import asyncpg
 import redis.asyncio as aioredis
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +60,7 @@ class EventConsumer:
             event_type = event_data.get('event_type')
             visitor_id = event_data.get('visitor_id')
             timestamp_str = event_data.get('timestamp')
+            timestamp_obj = datetime.fromisoformat(timestamp_str) if timestamp_str else None
             is_staff = event_data.get('is_staff', 'False') == 'True'
             zone_id = event_data.get('zone_id')
             store_id = event_data.get('store_id')
@@ -75,7 +76,7 @@ class EventConsumer:
             """,
                 event_data.get('event_id'), store_id,
                 event_data.get('camera_id'), visitor_id,
-                event_type, timestamp_str, zone_id,
+                event_type, timestamp_obj, zone_id,
                 int(event_data.get('dwell_ms') or 0),
                 is_staff, float(event_data.get('confidence', 0.0)),
                 event_data.get('metadata', '{}')
@@ -93,7 +94,7 @@ class EventConsumer:
                     ON CONFLICT (visitor_id) DO NOTHING
                 """,
                     visitor_id, store_id, event_data.get('camera_id'),
-                    timestamp_str, is_staff
+                    timestamp_obj, is_staff
                 )
                 
             elif event_type == 'ZONE_ENTER':
@@ -103,7 +104,7 @@ class EventConsumer:
                         INSERT INTO sessions (visitor_id, store_id, camera_id, entry_time, zones_visited)
                         VALUES ($1, $2, $3, $4::timestamptz, '[]'::jsonb)
                         ON CONFLICT (visitor_id) DO NOTHING
-                    """, visitor_id, store_id, event_data.get('camera_id'), timestamp_str)
+                    """, visitor_id, store_id, event_data.get('camera_id'), timestamp_obj)
                     
                     await conn.execute("""
                         UPDATE sessions 
@@ -118,7 +119,7 @@ class EventConsumer:
                     SET exit_time = $1::timestamptz, 
                         dwell_ms = (EXTRACT(EPOCH FROM ($1::timestamptz - entry_time)) * 1000)::int
                     WHERE visitor_id = $2
-                """, timestamp_str, visitor_id)
+                """, timestamp_obj, visitor_id)
                 
                 # POS Matching logic
                 # If they visited Billing, try to match a POS transaction near their exit time
@@ -133,8 +134,7 @@ class EventConsumer:
                             AND timestamp >= ($2::timestamptz - INTERVAL '15 minutes')
                             AND timestamp <= ($2::timestamptz + INTERVAL '15 minutes')
                             AND transaction_id NOT IN (SELECT transaction_id FROM sessions WHERE transaction_id IS NOT NULL)
-                            LIMIT 1
-                        """, store_id, timestamp_str)
+                        """, store_id, timestamp_obj)
                         
                         if pos_match:
                             await conn.execute("""
