@@ -44,6 +44,7 @@ def _inject_correlation_id(
     """Structlog processor that adds the correlation ID to every log line."""
     cid = correlation_id_ctx.get("")
     if cid:
+        event_dict["trace_id"] = cid
         event_dict["correlation_id"] = cid
     return event_dict
 
@@ -54,22 +55,40 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         start = time.perf_counter()
         method = request.method
-        path = request.url.path
+        endpoint = request.url.path
+        
+        store_id = None
+        if endpoint.startswith("/stores/"):
+            parts = endpoint.split("/")
+            if len(parts) >= 3:
+                store_id = parts[2]
 
-        log = logger.bind(method=method, path=path)
+        log = logger.bind(method=method, endpoint=endpoint)
+        if store_id:
+            log = log.bind(store_id=store_id)
+            
         log.info("request.started")
 
         try:
             response: Response = await call_next(request)
         except Exception:
-            elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
-            log.exception("request.failed", duration_ms=elapsed_ms)
-            raise
+            latency_ms = round((time.perf_counter() - start) * 1000, 2)
+            log.exception("request.failed", latency_ms=latency_ms)
+            from starlette.responses import JSONResponse
+            return JSONResponse(
+                status_code=500,
+                content={"error": "Internal server error", "detail": "An unexpected error occurred."}
+            )
 
-        elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
-        log.info(
-            "request.completed",
-            status_code=response.status_code,
-            duration_ms=elapsed_ms,
-        )
+        latency_ms = round((time.perf_counter() - start) * 1000, 2)
+        
+        log_kwargs = {
+            "status_code": response.status_code,
+            "latency_ms": latency_ms,
+        }
+        
+        if hasattr(request.state, "event_count"):
+            log_kwargs["event_count"] = request.state.event_count
+
+        log.info("request.completed", **log_kwargs)
         return response

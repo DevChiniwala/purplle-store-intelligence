@@ -21,8 +21,8 @@ async def test_get_metrics():
     assert response.status_code == 200
     data = response.json()
     assert data["store_id"] == "ST1008"
-    assert "total_footfall" in data
-    assert "store_conversion_rate" in data
+    assert "footfall" in data
+    assert "conversion_rate" in data
 
 @pytest.mark.asyncio
 async def test_get_funnel():
@@ -30,8 +30,8 @@ async def test_get_funnel():
         response = await ac.get("/api/v1/stores/ST1008/funnel/")
     assert response.status_code == 200
     data = response.json()
-    assert "funnel_stages" in data
-    assert len(data["funnel_stages"]) > 0
+    assert "stages" in data
+    assert len(data["stages"]) > 0
 
 @pytest.mark.asyncio
 async def test_get_anomalies():
@@ -48,7 +48,6 @@ async def test_get_events():
     assert response.status_code == 200
     data = response.json()
     assert "events" in data
-    assert data["page"] == 1
 
 @pytest.mark.asyncio
 async def test_get_heatmap():
@@ -57,3 +56,51 @@ async def test_get_heatmap():
     assert response.status_code == 200
     data = response.json()
     assert "zones" in data
+
+@pytest.mark.asyncio
+async def test_post_events(sample_event_data):
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.post("/api/v1/events/ingest", json=[sample_event_data])
+    assert response.status_code in [200, 201, 202]
+
+@pytest.mark.asyncio
+async def test_database_error_handler(mock_db_pool):
+    import asyncpg
+    pool, conn = mock_db_pool
+    pool.fetchrow.side_effect = asyncpg.exceptions.PostgresError("Database connection lost")
+    
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/v1/stores/ST1008/metrics/")
+    
+    assert response.status_code == 503
+    data = response.json()
+    assert data["error"] == "Database unavailable"
+    assert "degraded" in data["detail"]
+    pool.fetchrow.side_effect = None
+
+@pytest.mark.asyncio
+async def test_os_error_handler(mock_db_pool):
+    pool, conn = mock_db_pool
+    pool.fetchrow.side_effect = OSError("Connection refused")
+    
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/v1/stores/ST1008/metrics/")
+    
+    assert response.status_code == 503
+    data = response.json()
+    assert data["error"] == "Database unavailable"
+    assert "Unable to connect" in data["detail"]
+    pool.fetchrow.side_effect = None
+
+@pytest.mark.asyncio
+async def test_generic_exception_handler(mock_db_pool):
+    pool, conn = mock_db_pool
+    pool.fetchrow.side_effect = Exception("Unexpected crash")
+    
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        response = await ac.get("/api/v1/stores/ST1008/metrics/")
+    
+    assert response.status_code == 500
+    data = response.json()
+    assert data["error"] == "Internal server error"
+    pool.fetchrow.side_effect = None

@@ -1,4 +1,5 @@
--- setup_db.sql
+-- setup_db.sql  —  Store Intelligence schema
+-- All CREATE INDEX statements are idempotent (IF NOT EXISTS).
 
 CREATE TABLE IF NOT EXISTS events (
     event_id UUID PRIMARY KEY,
@@ -14,20 +15,22 @@ CREATE TABLE IF NOT EXISTS events (
     metadata JSONB
 );
 
-CREATE INDEX idx_events_timestamp ON events(timestamp);
-CREATE INDEX idx_events_type ON events(event_type);
-CREATE INDEX idx_events_camera ON events(camera_id);
-CREATE INDEX idx_events_visitor ON events(visitor_id);
+CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
+CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
+CREATE INDEX IF NOT EXISTS idx_events_camera ON events(camera_id);
+CREATE INDEX IF NOT EXISTS idx_events_visitor ON events(visitor_id);
+CREATE INDEX IF NOT EXISTS idx_events_store_ts ON events(store_id, timestamp);
 
 CREATE TABLE IF NOT EXISTS pos_transactions (
-    store_id VARCHAR,
+    store_id VARCHAR NOT NULL,
     transaction_id VARCHAR PRIMARY KEY,
     timestamp TIMESTAMPTZ,
     basket_value_inr DECIMAL
 );
 
-CREATE INDEX idx_pos_timestamp ON pos_transactions(timestamp);
-CREATE INDEX idx_pos_store ON pos_transactions(store_id);
+CREATE INDEX IF NOT EXISTS idx_pos_timestamp ON pos_transactions(timestamp);
+CREATE INDEX IF NOT EXISTS idx_pos_store ON pos_transactions(store_id);
+CREATE INDEX IF NOT EXISTS idx_pos_store_ts ON pos_transactions(store_id, timestamp);
 
 CREATE TABLE IF NOT EXISTS pipeline_status (
     id SERIAL PRIMARY KEY,
@@ -54,4 +57,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     transaction_id VARCHAR
 );
 
-CREATE INDEX idx_sessions_entry ON sessions(entry_time);
+CREATE INDEX IF NOT EXISTS idx_sessions_entry ON sessions(entry_time);
+CREATE INDEX IF NOT EXISTS idx_sessions_store ON sessions(store_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_store_entry ON sessions(store_id, entry_time);

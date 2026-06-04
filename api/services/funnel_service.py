@@ -11,6 +11,7 @@ Stages:
 from __future__ import annotations
 
 import datetime as dt
+import json
 from typing import Any, Optional
 
 import asyncpg
@@ -76,12 +77,18 @@ async def get_conversion_funnel(
     engaged: set[str] = set()
     interested: set[str] = set()
     converted: set[str] = set()
-    track_session_count: dict[int, int] = {}
+    track_session_count: dict[str, int] = {}
 
     for row in rows:
         vid: str = row["visitor_id"]
         dwell: float = float(row["dwell_ms"] or 0) / 1000.0
-        zones: list[str] = row["zones_visited"] if row["zones_visited"] else []
+        
+        raw_zones = row["zones_visited"]
+        if isinstance(raw_zones, str):
+            zones = json.loads(raw_zones)
+        else:
+            zones = raw_zones if raw_zones else []
+            
         purchased: bool = row["purchased"] or False
 
         # Stage 1 – Entered

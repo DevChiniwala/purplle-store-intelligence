@@ -1,11 +1,9 @@
-from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
+"""Canonical event schema shared across publisher/consumer."""
 
-class BoundingBox(BaseModel):
-    x1: float
-    y1: float
-    x2: float
-    y2: float
+from typing import Any, Dict, Optional
+
+from pydantic import BaseModel, Field
+
 
 class EventSchema(BaseModel):
     event_id: str
@@ -18,4 +16,4 @@ class EventSchema(BaseModel):
     dwell_ms: Optional[int] = None
     is_staff: bool = False
     confidence: float
-    metadata: Dict[str, Any] = {}
+    metadata: Dict[str, Any] = Field(default_factory=dict)

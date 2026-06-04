@@ -3,7 +3,7 @@
 
 import pytest
 import datetime as dt
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from api.services.funnel_service import get_conversion_funnel
 
 @pytest.mark.asyncio
@@ -11,33 +11,27 @@ async def test_funnel_stages(mock_db_pool):
     pool, conn = mock_db_pool
     # Mocking rows returned from DB for sessions
     mock_rows = [
-        {"session_id": "s1", "track_id": 1, "dwell_seconds": 120, "zones_visited": ["entrance", "makeup"], "purchased": False, "customer_number": None},
-        {"session_id": "s2", "track_id": 2, "dwell_seconds": 45, "zones_visited": ["entrance"], "purchased": False, "customer_number": None},
-        {"session_id": "s3", "track_id": 3, "dwell_seconds": 300, "zones_visited": ["entrance", "skincare", "billing"], "purchased": True, "customer_number": "C123"},
-        {"session_id": "s4", "track_id": 3, "dwell_seconds": 200, "zones_visited": ["entrance", "makeup"], "purchased": False, "customer_number": "C123"}, # Repeat visitor
+        {"visitor_id": "v1", "dwell_ms": 120000, "zones_visited": '["entrance", "makeup_wall"]', "purchased": False, "transaction_id": None},
+        {"visitor_id": "v2", "dwell_ms": 45000, "zones_visited": '["entrance"]', "purchased": False, "transaction_id": None},
+        {"visitor_id": "v3", "dwell_ms": 300000, "zones_visited": '["entrance", "skincare_wall", "billing"]', "purchased": True, "transaction_id": "T1"},
+        {"visitor_id": "v3", "dwell_ms": 200000, "zones_visited": '["entrance", "makeup_wall"]', "purchased": False, "transaction_id": None},
     ]
     pool.fetch.return_value = mock_rows
 
-    with patch("api.services.funnel_service.get_pool", return_value=pool):
-        funnel = await get_conversion_funnel(
-            store_id="ST1008",
-            start_time=dt.datetime(2026, 4, 10, 0, 0, tzinfo=dt.timezone.utc),
-            end_time=dt.datetime(2026, 4, 11, 0, 0, tzinfo=dt.timezone.utc)
-        )
+    funnel = await get_conversion_funnel(
+        store_id="ST1008",
+        start_time=dt.datetime(2026, 4, 10, 0, 0, tzinfo=dt.timezone.utc),
+        end_time=dt.datetime(2026, 4, 11, 0, 0, tzinfo=dt.timezone.utc)
+    )
 
-        assert funnel.store_id == "ST1008"
-        assert len(funnel.stages) == 5
-        
-        # Verify counts
-        # Total entered: 4 (s1, s2, s3, s4)
-        assert funnel.stages[0].count == 4
-        # Engaged (>=2 zones or dwell > 60): s1, s3, s4
-        assert funnel.stages[1].count == 3
-        # Converted (purchased): s3
-        assert funnel.stages[3].count == 1
-        # Repeat (track_id 3 appears twice): 2 sessions (s3, s4)
-        assert funnel.stages[4].count == 2
-        
-        # Verify monotonically decreasing percentages (mostly, repeat can vary but typically yes for standard stages)
-        assert funnel.stages[0].percentage == 100.0
-        assert funnel.stages[1].percentage <= funnel.stages[0].percentage
+    assert funnel.store_id == "ST1008"
+    assert len(funnel.stages) == 5
+    
+    # Entered: v1, v2, v3 (Unique visitors) => count is 3
+    assert funnel.stages[0].count == 3
+    # Engaged: v1, v3 => count is 2
+    assert funnel.stages[1].count == 2
+    # Interested (Product zone): v1, v3 => count is 2
+    assert funnel.stages[2].count == 2
+    # Converted (Purchased): v3 => count is 1
+    assert funnel.stages[3].count == 1

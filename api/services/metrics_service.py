@@ -98,7 +98,12 @@ async def get_store_metrics(
           AND timestamp < $3
     """
     pos_row = await pool.fetchrow(pos_query, store_id, start_time, end_time)
-    revenue = Decimal(str(pos_row["total_revenue"])) if pos_row else Decimal("0")
+    
+    if pos_row and pos_row.get("total_revenue") is not None:
+        revenue = Decimal(str(pos_row["total_revenue"]))
+    else:
+        revenue = Decimal("0")
+        
     gmv = revenue  # simplified for new schema
     txn_count: int = pos_row["txn_count"] if pos_row else 0
     atv = round(revenue / txn_count, 2) if txn_count else Decimal("0")

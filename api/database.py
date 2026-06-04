@@ -1,41 +1,53 @@
 """Database connection pool management using asyncpg."""
 
+import asyncio
 import os
+from typing import AsyncGenerator, Optional
+
 import asyncpg
-from typing import Optional, AsyncGenerator
 
-# Database connection pool
-pool: Optional[asyncpg.Pool] = None
+# ── Module-level state ───────────────────────────────────────────────────────
+_pool: Optional[asyncpg.Pool] = None
+_pool_lock = asyncio.Lock()
 
-
-async def init_db_pool():
-    """Initialize the asyncpg connection pool."""
-    global pool
-    db_url = os.getenv(
-        "DATABASE_URL",
-        "postgresql://admin:admin@postgres:5432/store_intelligence"
-    )
-    pool = await asyncpg.create_pool(dsn=db_url, min_size=2, max_size=10)
+# ── Configuration (env-driven) ───────────────────────────────────────────────
+_DB_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://admin:admin@postgres:5432/store_intelligence",
+)
+_POOL_MIN = int(os.getenv("DB_POOL_MIN", "2"))
+_POOL_MAX = int(os.getenv("DB_POOL_MAX", "10"))
 
 
-async def close_db_pool():
+async def init_db_pool() -> None:
+    """Initialize the asyncpg connection pool (idempotent)."""
+    global _pool
+    async with _pool_lock:
+        if _pool is not None:
+            return  # already initialised
+        _pool = await asyncpg.create_pool(
+            dsn=_DB_URL, min_size=_POOL_MIN, max_size=_POOL_MAX
+        )
+
+
+async def close_db_pool() -> None:
     """Close the asyncpg connection pool."""
-    global pool
-    if pool:
-        await pool.close()
+    global _pool
+    if _pool:
+        await _pool.close()
+        _pool = None
 
 
 def get_pool() -> asyncpg.Pool:
     """Return the raw pool for service-layer use (non-dependency-injection)."""
-    if pool is None:
+    if _pool is None:
         raise RuntimeError("Database pool not initialised — call init_db_pool() first")
-    return pool
+    return _pool
 
 
 async def get_db_connection() -> AsyncGenerator[asyncpg.Connection, None]:
     """FastAPI dependency that yields a connection from the pool."""
-    global pool
-    if pool is None:
+    if _pool is None:
         await init_db_pool()
-    async with pool.acquire() as conn:
+    async with _pool.acquire() as conn:
         yield conn

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import List
-from datetime import datetime
+
 import json
 from api.database import get_db_connection
 
@@ -25,9 +25,10 @@ class HeatmapResponse(BaseModel):
 async def get_heatmap(store_id: str, db = Depends(get_db_connection)):
     # Calculate zone visits dynamically from sessions
     rows = await db.fetch("""
-        SELECT zones_visited, dwell_ms, entry_time 
-        FROM sessions 
-        WHERE store_id = $1
+        SELECT s.zones_visited, s.dwell_ms, s.entry_time 
+        FROM sessions s
+        WHERE s.store_id = $1
+        AND s.is_staff = FALSE
     """, store_id)
     
     zone_counts = {}
@@ -53,7 +54,7 @@ async def get_heatmap(store_id: str, db = Depends(get_db_connection)):
                     zone_counts[z] += 1
                     if row['dwell_ms']:
                         zone_dwells[z].append(row['dwell_ms'] / 1000.0)
-            except:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 pass
                 
     result_zones = []

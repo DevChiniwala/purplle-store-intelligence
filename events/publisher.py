@@ -24,4 +24,4 @@ class EventPublisher:
                         event_data[k] = v
             self.redis.xadd(self.stream_name, event_data)
         except Exception as e:
-            logger.error(f"Failed to publish event: {e}")
+            logger.error("Failed to publish event: %s", str(e))

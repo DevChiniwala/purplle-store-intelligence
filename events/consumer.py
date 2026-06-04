@@ -71,7 +71,7 @@ class EventConsumer:
                 try:
                     import ast
                     metadata_str = json.dumps(ast.literal_eval(metadata_str))
-                except:
+                except (ValueError, SyntaxError):
                     pass
 
             await conn.execute("""
@@ -106,7 +106,7 @@ class EventConsumer:
                     timestamp_obj, is_staff
                 )
                 
-            elif event_type == 'ZONE_ENTER':
+            elif event_type in ('ZONE_ENTER', 'BILLING_QUEUE_JOIN', 'BILLING_QUEUE_ABANDON'):
                 if zone_id:
                     # Upsert session if it doesn't exist just in case we missed ENTRY
                     await conn.execute("""
@@ -134,22 +134,28 @@ class EventConsumer:
                 # If they visited Billing, try to match a POS transaction near their exit time
                 row = await conn.fetchrow("SELECT zones_visited, entry_time FROM sessions WHERE visitor_id = $1", visitor_id)
                 if row and row['zones_visited']:
-                    zones_visited = json.loads(row['zones_visited'])
+                    zones_raw = row['zones_visited']
+                    if isinstance(zones_raw, str):
+                        zones_visited = json.loads(zones_raw)
+                    else:
+                        zones_visited = zones_raw if zones_raw else []
                     if any('billing' in z.lower() or 'checkout' in z.lower() for z in zones_visited):
-                        # Find an unassigned POS transaction within +/- 15 minutes of exit time
+                        # Find the closest unassigned POS transaction within ±30 minutes of exit time
                         pos_match = await conn.fetchrow("""
                             SELECT transaction_id FROM pos_transactions 
                             WHERE store_id = $1
-                            AND timestamp >= ($2::timestamptz - INTERVAL '15 minutes')
-                            AND timestamp <= ($2::timestamptz + INTERVAL '15 minutes')
+                            AND timestamp >= ($2::timestamptz - INTERVAL '30 minutes')
+                            AND timestamp <= ($2::timestamptz + INTERVAL '30 minutes')
                             AND transaction_id NOT IN (SELECT transaction_id FROM sessions WHERE transaction_id IS NOT NULL)
+                            ORDER BY ABS(EXTRACT(EPOCH FROM (timestamp - $2::timestamptz)))
+                            LIMIT 1
                         """, store_id, timestamp_obj)
                         
                         if pos_match:
                             await conn.execute("""
                                 UPDATE sessions SET purchased = TRUE, transaction_id = $1 WHERE visitor_id = $2
                             """, pos_match['transaction_id'], visitor_id)
-                            logger.info(f"Matched session {visitor_id} to order {pos_match['transaction_id']}")
+                            logger.info("POS match found", visitor_id=visitor_id, transaction_id=pos_match['transaction_id'])
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
