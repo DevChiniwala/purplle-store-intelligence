@@ -17,6 +17,8 @@
 
 Ingests multi-camera CCTV footage and POS sales data to generate real-time analytics on footfall, conversion rates, zone engagement, and anomaly detection.
 
+**[🔗 Live Demo](https://purplle-store-intelligence-dashboard.vercel.app)** — dashboard running against a live-deployed FastAPI + Postgres backend.
+
 </div>
 
 ---
