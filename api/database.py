@@ -26,7 +26,12 @@ async def init_db_pool() -> None:
         if _pool is not None:
             return  # already initialised
         _pool = await asyncpg.create_pool(
-            dsn=_DB_URL, min_size=_POOL_MIN, max_size=_POOL_MAX
+            dsn=_DB_URL,
+            min_size=_POOL_MIN,
+            max_size=_POOL_MAX,
+            # Supavisor's transaction-mode pooler (required for IPv4 platforms
+            # like Vercel) doesn't support prepared statements.
+            statement_cache_size=0,
         )
 
 
